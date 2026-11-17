@@ -1,0 +1,24 @@
+#!/bin/bash
+#PBS -N name-that-llm
+#PBS -q normal
+#PBS -l select=1:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+exec >"train-$PBS_JOBID.log" 2>&1
+export OMP_NUM_THREADS=4
+export TOKENIZERS_PARALLELISM=false
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+if [[ -d "$PBS_O_WORKDIR/deps" ]]; then
+    export PYTHONPATH="$PBS_O_WORKDIR/deps${PYTHONPATH:+:$PYTHONPATH}"
+fi
+python_bin="${QWEN_PYTHON:-python}"
+python_executable="$(readlink -f "$(command -v "$python_bin")")"
+python_lib="$(dirname "$(dirname "$python_executable")")/lib"
+export LD_LIBRARY_PATH="$python_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+nvidia-smi
+"$python_bin" -c 'import torch; assert torch.cuda.is_available(), "CUDA is unavailable"'
+exec "$python_bin" -u train.py --data ./data --model ./qwen3-base --offline --output "runs/$PBS_JOBID" --epochs "${QWEN_EPOCHS:-4}"
